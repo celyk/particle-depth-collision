@@ -1,0 +1,18 @@
+[gd_resource type="Environment" load_steps=2 format=2]
+
+[sub_resource type="ProceduralSky" id=1]
+
+[resource]
+background_mode = 2
+background_sky = SubResource( 1 )
+ambient_light_sky_contribution = 0.38
+ssao_enabled = true
+ssao_radius = 0.2
+ssao_radius2 = 1.0
+ssao_light_affect = 1.0
+ssao_ao_channel_affect = 1.0
+glow_enabled = true
+glow_intensity = 1.0
+glow_strength = 1.64
+glow_hdr_luminance_cap = 31.2
+glow_bicubic_upscale = true

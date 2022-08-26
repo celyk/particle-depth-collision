@@ -1,0 +1,440 @@
+[gd_scene load_steps=18 format=2]
+
+[ext_resource path="res://look_and_fly.gd" type="Script" id=1]
+[ext_resource path="res://projection_matrix.gd" type="Script" id=2]
+[ext_resource path="res://default_env.tres" type="Environment" id=3]
+[ext_resource path="res://particle.tres" type="Material" id=4]
+
+[sub_resource type="Shader" id=18]
+code = "shader_type particles;
+
+uniform vec3 start_velocity;
+
+uniform sampler2D tex;
+
+uniform mat4 my_camera;
+uniform mat4 my_scuffed_projection;
+
+float rand_from_seed(inout uint seed) {
+	int k;
+	int s = int(seed);
+	if (s == 0)
+	s = 305420679;
+	k = s / 127773;
+	s = 16807 * (s - k * 127773) - 2836 * k;
+	if (s < 0)
+		s += 2147483647;
+	seed = uint(s);
+	return float(seed % uint(65536)) / 65535.0;
+}
+
+uint hash(uint x) {
+	x = ((x >> uint(16)) ^ x) * uint(73244475);
+	x = ((x >> uint(16)) ^ x) * uint(73244475);
+	x = (x >> uint(16)) ^ x;
+	return x;
+}
+
+
+vec2 getUV(vec3 pos,mat4 viewToClip, mat4 worldToView){
+	vec4 p = viewToClip*worldToView*vec4(pos,1);
+	p.xyz /= p.w;
+	return p.xy*.5+.5;
+}
+
+vec3 getWorldPos(vec2 screen, float depth, mat4 clipToView, mat4 viewToWorld){
+	vec3 ndc = vec3(screen, depth) * 2.0 - 1.0;
+	/*vec4 view = clipToView * vec4(ndc, 1.0);
+	view.xyz /= view.w;
+	float linear_depth = -view.z;*/
+
+	vec4 world = viewToWorld * clipToView * vec4(ndc, 1.0);
+	vec3 world_position = world.xyz / world.w;
+	
+	return world_position;
+}
+
+void vertex(){
+
+	if(RESTART){	
+		// random vector
+		uint base_number = NUMBER;
+		uint alt_seed = hash(base_number + uint(1) + RANDOM_SEED);
+
+		vec3 rv = vec3(rand_from_seed(alt_seed),rand_from_seed(alt_seed),rand_from_seed(alt_seed))-.5;
+	
+		CUSTOM.w = 0.;
+		COLOR.xyz = vec3(rv+.5);
+		TRANSFORM[3].xyz = EMISSION_TRANSFORM[3].xyz; //-rand_from_seed(alt_seed)*start_velocity*DELTA;
+		VELOCITY = start_velocity+rv*.4;
+	}
+	else{
+		// reconstruct projection matrix
+		mat4 my_projection = my_scuffed_projection;
+		my_projection[2][3] = -1.;
+		my_projection[3][3] = 0.;
+		
+		// get screen space coordinates of particle
+		vec2 uv = getUV(TRANSFORM[3].xyz,my_projection,inverse(my_camera));
+		
+		// TODO
+		vec3 pixel_size = vec3(1,1,0)/vec3(1280,720,1);
+		
+		vec4 T = textureLod(tex,uv,0.);
+		
+		
+		// reconstruct normal on scene
+		vec3 scene_pos = getWorldPos(uv,T.w,inverse(my_projection),my_camera);
+
+		float scene_t = length(scene_pos - my_camera[3].xyz);
+		float particle_t = length(TRANSFORM[3].xyz - my_camera[3].xyz);
+		
+		vec3 view = normalize(scene_pos - my_camera[3].xyz);
+		
+		float collision_depth = scene_t - particle_t;
+		bool colliding = collision_depth <= 0. && collision_depth >= -length(VELOCITY)*.1;
+		
+		// handle collision
+		if(colliding){
+			vec4 Ta = textureLod(tex,uv+vec2(pixel_size.x,0),0.);
+			vec4 Tb = textureLod(tex,uv+vec2(0,pixel_size.y),0.);
+			vec3 scene_pos_a = getWorldPos(uv+vec2(pixel_size.x,0),Ta.w,inverse(my_projection),my_camera);
+			vec3 scene_pos_b = getWorldPos(uv+vec2(0,pixel_size.y),Tb.w,inverse(my_projection),my_camera);
+			
+			vec3 n = normalize( cross(normalize(scene_pos_a-scene_pos),normalize(scene_pos_b-scene_pos)) );
+			
+			TRANSFORM[3].xyz += n*dot(n,scene_pos - TRANSFORM[3].xyz);
+			VELOCITY += 1.5*n*-dot(n,VELOCITY);
+		}
+		
+		// simulate
+		
+		CUSTOM.w += DELTA;
+		
+		// integrate gravity acceleration
+		VELOCITY += vec3(0,-2,0)*DELTA;
+		
+		COLOR.w = smoothstep(1.99,1.5,CUSTOM.w)*.5;
+		
+	}
+}"
+
+[sub_resource type="ViewportTexture" id=25]
+viewport_path = NodePath("Viewport")
+
+[sub_resource type="ShaderMaterial" id=19]
+resource_local_to_scene = true
+render_priority = 2
+shader = SubResource( 18 )
+shader_param/start_velocity = null
+shader_param/my_camera = null
+shader_param/my_scuffed_projection = null
+shader_param/tex = SubResource( 25 )
+
+[sub_resource type="CubeMesh" id=24]
+material = ExtResource( 4 )
+size = Vector3( 0.004, 0.004, 0.004 )
+
+[sub_resource type="GDScript" id=17]
+script/source = "extends Particles
+
+func get_fovy(p_fovx,p_aspect):
+	return rad2deg(atan(p_aspect * tan(deg2rad(p_fovx) * 0.5)) * 2.0);
+
+func createProjectionMatrix(p_fovy_degrees,p_aspect,p_z_near,p_z_far,p_flip_fov=false):
+	if p_flip_fov:
+		p_fovy_degrees = get_fovy(p_fovy_degrees, 1.0 / p_aspect)
+
+	var sine : float
+	var cotangent : float
+	var deltaZ : float
+	
+	var Math_PI = 3.1415926
+	var radians = (p_fovy_degrees / 2.0) * (Math_PI / 180.0)
+
+	deltaZ = p_z_far - p_z_near;
+	sine = sin(radians);
+
+	var matrix : Transform = Transform.IDENTITY
+	
+	if ((deltaZ == 0) || (sine == 0) || (p_aspect == 0)):
+		return matrix
+	
+	cotangent = cos(radians) / sine;
+
+	matrix[0][0] = cotangent / p_aspect;
+	matrix[1][1] = cotangent;
+	matrix[2][2] = -(p_z_far + p_z_near) / deltaZ;
+	#matrix[2][3] = -1;
+	matrix[3][2] = -2 * p_z_near * p_z_far / deltaZ;
+	#matrix[3][3] = 0;
+	
+	return matrix
+
+
+onready var last_pos = global_translation
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+func _process(dt):
+	#process_material.set_shader_param(\"tex\",get_viewport().get_texture())
+	
+	var camera = get_viewport().get_camera()
+	process_material.set_shader_param(\"my_camera\",camera.get_camera_transform())
+	process_material.set_shader_param(
+		\"my_scuffed_projection\",
+		createProjectionMatrix(camera.fov,1024.0/600,camera.near,camera.far))
+	
+
+	var velocity = (global_translation - last_pos)/dt
+	
+	emitting = false
+	if Input.is_mouse_button_pressed(BUTTON_LEFT):
+		emitting = true
+		#velocity += -global_transform.basis[2]*4.0
+	process_material.set_shader_param(\"start_velocity\",velocity)
+	
+	last_pos = global_translation
+"
+
+[sub_resource type="SpatialMaterial" id=23]
+albedo_color = Color( 0.352941, 0.352941, 0.352941, 1 )
+
+[sub_resource type="Shader" id=15]
+code = "shader_type spatial;
+
+render_mode unshaded;//depth_test_disable;
+
+vec3 getWorldPos(vec2 screen, float depth, mat4 clipToView, mat4 viewToWorld){
+	vec3 ndc = vec3(screen, depth) * 2.0 - 1.0;
+	/*vec4 view = clipToView * vec4(ndc, 1.0);
+	view.xyz /= view.w;
+	float linear_depth = -view.z;*/
+
+	vec4 world = viewToWorld * clipToView * vec4(ndc, 1.0);
+	vec3 world_position = world.xyz / world.w;
+	
+	return world_position;
+}
+
+void fragment(){
+	ALBEDO = vec3(.1);
+	//float depth = texture(DEPTH_TEXTURE,SCREEN_UV).x;
+	//ALBEDO = getWorldPos(SCREEN_UV,depth,inverse(PROJECTION_MATRIX),CAMERA_MATRIX);
+}"
+
+[sub_resource type="ShaderMaterial" id=16]
+render_priority = -1
+shader = SubResource( 15 )
+
+[sub_resource type="Shader" id=8]
+code = "shader_type spatial;
+
+render_mode unshaded,depth_test_disable,blend_mul;
+
+void fragment(){
+	ALBEDO = vec3(1);
+	ALPHA = textureLod(DEPTH_TEXTURE,SCREEN_UV,0.).x;
+}"
+
+[sub_resource type="ShaderMaterial" id=1]
+render_priority = 1
+shader = SubResource( 8 )
+
+[sub_resource type="Shader" id=6]
+code = "shader_type canvas_item;
+
+uniform mat4 aCAMERA_MATRIX;
+uniform vec4 scuffed_PROJECTION_MATRIX;
+
+// colour space conversions taken from godot source code
+
+// This expects 0-1 range input.
+vec3 linear_to_srgb(vec3 color) {
+    //color = clamp(color, vec3(0.0), vec3(1.0));
+    //const vec3 a = vec3(0.055f);
+    //return mix((vec3(1.0f) + a) * pow(color.rgb, vec3(1.0f / 2.4f)) - a, 12.92f * color.rgb, lessThan(color.rgb, vec3(0.0031308f)));
+    // Approximation from http://chilliant.blogspot.com/2012/08/srgb-approximations-for-hlsl.html
+    return max(vec3(1.055) * pow(color, vec3(0.416666667)) - vec3(0.055), vec3(0.0));
+}
+
+// This expects 0-1 range input, outside that range it behaves poorly.
+vec3 srgb_to_linear(vec3 color) {
+    // Approximation from http://chilliant.blogspot.com/2012/08/srgb-approximations-for-hlsl.html
+    return color * (color * (color * 0.305306011 + 0.682171111) + 0.012522878);
+}
+
+
+vec2 getUV(vec3 pos,mat4 viewToClip, mat4 worldToView){
+	vec4 p = viewToClip*worldToView*vec4(pos,1);
+	p.xyz /= p.w;
+	return p.xy*.5+.5;
+}
+
+vec3 getWorldPos(vec2 screen, float depth, mat4 clipToView, mat4 viewToWorld){
+	vec3 ndc = vec3(screen, depth) * 2.0 - 1.0;
+	/*vec4 view = clipToView * vec4(ndc, 1.0);
+	view.xyz /= view.w;
+	float linear_depth = -view.z;*/
+
+	vec4 world = viewToWorld * clipToView * vec4(ndc, 1.0);
+	vec3 world_position = world.xyz / world.w;
+	
+	return world_position;
+}
+
+void fragment(){
+	vec4 T = textureLod(TEXTURE,UV,0.);
+	
+	vec3 col = T.xyz;
+	float depth = T.w;
+	
+	COLOR.xyz = linear_to_srgb(col.xyz); // approximately pow(T.xyz,vec3(1)/2.2)
+
+	/*if(SCREEN_UV.y<.4){
+		COLOR.xyz = vec3(depth);
+		if(SCREEN_UV.x<.5){
+			mat4 aPROJECTION_MATRIX = mat4(1);
+			aPROJECTION_MATRIX[0][0] = scuffed_PROJECTION_MATRIX[0];
+			aPROJECTION_MATRIX[1][1] = scuffed_PROJECTION_MATRIX[1];
+			aPROJECTION_MATRIX[2][2] = scuffed_PROJECTION_MATRIX[2];
+			aPROJECTION_MATRIX[2][3] = -1.;
+			aPROJECTION_MATRIX[3][2] = scuffed_PROJECTION_MATRIX[3];
+			aPROJECTION_MATRIX[3][3] = 0.;
+			
+			vec3 world_pos = getWorldPos(UV,depth,inverse(aPROJECTION_MATRIX),aCAMERA_MATRIX);
+			vec3 n = normalize( cross(dFdx(world_pos),dFdy(world_pos)) );
+			
+			vec2 uv = getUV(world_pos,aPROJECTION_MATRIX,inverse(aCAMERA_MATRIX));
+			//COLOR.xyz = vec3(uv,0);
+			COLOR.xyz = n*.5+.5;
+		}
+	}*/
+}"
+
+[sub_resource type="ShaderMaterial" id=7]
+shader = SubResource( 6 )
+shader_param/aCAMERA_MATRIX = null
+shader_param/scuffed_PROJECTION_MATRIX = null
+
+[sub_resource type="ViewportTexture" id=5]
+viewport_path = NodePath("Viewport")
+
+[node name="main" type="Spatial"]
+
+[node name="Viewport" type="Viewport" parent="."]
+size = Vector2( 1280, 720 )
+transparent_bg = true
+handle_input_locally = false
+use_32_bpc_depth = true
+keep_3d_linear = true
+
+[node name="Camera" type="Camera" parent="Viewport"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.116796, 0.91955 )
+environment = ExtResource( 3 )
+current = true
+script = ExtResource( 1 )
+
+[node name="Particles2" type="Particles" parent="Viewport/Camera"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0342143, -0.28826 )
+emitting = false
+amount = 50000
+lifetime = 2.0
+local_coords = false
+process_material = SubResource( 19 )
+draw_pass_1 = SubResource( 24 )
+script = SubResource( 17 )
+
+[node name="OmniLight" type="OmniLight" parent="Viewport"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.246725, -0.938569 )
+
+[node name="CSGCombiner" type="CSGCombiner" parent="Viewport"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0.371041, 0.220035, -0.274035 )
+material_override = SubResource( 23 )
+
+[node name="CSGBox" type="CSGBox" parent="Viewport/CSGCombiner"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, -0.371041, -0.598761, 0.274035 )
+height = 0.230547
+
+[node name="CSGBox2" type="CSGBox" parent="Viewport/CSGCombiner"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, -0.768323, 0.458627, 0.713085 )
+width = 0.344364
+height = 1.96502
+depth = 0.579155
+
+[node name="CSGBox3" type="CSGBox" parent="Viewport/CSGCombiner"]
+width = 0.344364
+height = 1.00463
+depth = 0.579155
+
+[node name="CSGTorus" type="CSGTorus" parent="Viewport/CSGCombiner"]
+inner_radius = 0.357103
+outer_radius = 0.601696
+sides = 32
+ring_sides = 16
+
+[node name="CSGBox4" type="CSGBox" parent="Viewport/CSGCombiner"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, -0.371041, -0.282762, 0.274035 )
+operation = 2
+width = 0.709821
+height = 0.644568
+depth = 0.935899
+
+[node name="CSGTorus2" type="CSGTorus" parent="Viewport/CSGCombiner"]
+transform = Transform( 0.400059, 0.0664517, 0, -0.0664517, 0.400059, 0, 0, 0, 0.40554, -0.0712516, -0.348644, 0.563301 )
+operation = 2
+inner_radius = 1.06863
+outer_radius = 2.0468
+sides = 16
+ring_sides = 24
+
+[node name="CSGTorus3" type="CSGTorus" parent="Viewport/CSGCombiner"]
+transform = Transform( 0.397948, 0.0762852, 0.0167749, -0.0774975, 0.396491, 0.0353819, -0.00974504, -0.0379251, 0.403645, -0.0377086, -0.467865, 0.604132 )
+operation = 2
+inner_radius = 0.605324
+outer_radius = 1.04092
+sides = 16
+ring_sides = 24
+
+[node name="CSGSphere" type="CSGSphere" parent="Viewport/CSGCombiner"]
+transform = Transform( 0.0544854, 0, 0, 0, 0.0544854, 0, 0, 0, 0.0544854, -0.574512, -0.29421, 0.0782153 )
+radial_segments = 24
+rings = 12
+
+[node name="CSGSphere2" type="CSGSphere" parent="Viewport/CSGCombiner"]
+transform = Transform( 0.0408215, 0, 0, 0, 0.0408215, 0, 0, 0, 0.0408215, -0.484836, -0.383124, 0.0798078 )
+radial_segments = 24
+rings = 12
+
+[node name="CSGSphere3" type="CSGSphere" parent="Viewport/CSGCombiner"]
+transform = Transform( 0.0408215, 0, 0, 0, 0.0408215, 0, 0, 0, 0.0408215, -0.695278, -0.43328, 0.114599 )
+radial_segments = 24
+rings = 12
+
+[node name="sky" type="CSGBox" parent="Viewport"]
+transform = Transform( 20, 0, 0, 0, 20, 0, 0, 0, 20, 0, 0, 0 )
+invert_faces = true
+material = SubResource( 16 )
+
+[node name="write_alpha" type="CSGBox" parent="Viewport"]
+transform = Transform( 20, 0, 0, 0, 20, 0, 0, 0, 20, 0, 0, 0 )
+invert_faces = true
+material = SubResource( 1 )
+
+[node name="fly" type="Spatial" parent="."]
+unique_name_in_owner = true
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.116796, 0.91955 )
+script = ExtResource( 1 )
+speed = 0.02
+
+[node name="RemoteTransform" type="RemoteTransform" parent="fly"]
+visible = false
+remote_path = NodePath("../../Viewport/Camera")
+
+[node name="TextureRect" type="TextureRect" parent="."]
+material = SubResource( 7 )
+anchor_right = 1.0
+anchor_bottom = 1.0
+texture = SubResource( 5 )
+flip_v = true
+script = ExtResource( 2 )
+camera_path = NodePath("../Viewport/Camera")
