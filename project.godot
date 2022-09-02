@@ -24,6 +24,10 @@ config/name="particle depth collision"
 run/main_scene="res://main.tscn"
 config/icon="res://icon.png"
 
+[autoload]
+
+ProjectionMatrix="*res://projection_matrix.gd"
+
 [display]
 
 window/size/width=1280
@@ -41,6 +45,14 @@ singletons=[ "res://addons/godot-git-plugin/git_api.gdnlib" ]
 [gui]
 
 common/drop_mouse_on_gui_input_disabled=true
+
+[input]
+
+menu={
+"deadzone": 0.5,
+"events": [ Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":0,"alt":false,"shift":false,"control":false,"meta":false,"command":false,"pressed":false,"scancode":16777217,"physical_scancode":0,"unicode":0,"echo":false,"script":null)
+ ]
+}
 
 [physics]
 
