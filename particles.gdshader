@@ -1,5 +1,11 @@
 shader_type particles;
 
+
+uniform float spray : hint_range(0.0,5.0) = 0.4;
+uniform float bounciness : hint_range(0.0,1.0) = 0.5;
+uniform float friction : hint_range(0.0,20.0) = 0.5;
+
+
 uniform vec3 start_velocity;
 
 uniform sampler2D tex;
@@ -60,7 +66,7 @@ void vertex(){
 		CUSTOM.w = 0.;
 		COLOR.xyz = vec3(rv+.5);
 		TRANSFORM[3].xyz = EMISSION_TRANSFORM[3].xyz; //-rand_from_seed(alt_seed)*start_velocity*DELTA;
-		VELOCITY = start_velocity+rv*.4;
+		VELOCITY = start_velocity+rv*spray;
 	}
 	else{
 		// reconstruct projection matrix
@@ -72,7 +78,6 @@ void vertex(){
 		vec2 uv = getUV(TRANSFORM[3].xyz,my_projection,inverse(my_camera));
 		vec4 T = textureLod(tex,uv,0.);
 		
-		// reconstruct normal on scene
 		vec3 scene_pos = getWorldPos(uv,T.w,inverse(my_projection),my_camera);
 
 		float scene_t = length(scene_pos - my_camera[3].xyz);
@@ -80,21 +85,27 @@ void vertex(){
 		
 		vec3 view = normalize(scene_pos - my_camera[3].xyz);
 		
-		float collision_depth = scene_t - particle_t;
-		bool colliding = collision_depth <= 0. && collision_depth >= -length(VELOCITY)*.1;
+		float penetration_depth = scene_t - particle_t;
+		bool colliding = penetration_depth <= 0. && penetration_depth >= -length(VELOCITY)*.1;
 		
 		// handle collision
 		if(colliding){
+			// reconstruct normal on scene
 			vec3 e = vec3(my_screen_pixel_size,0);
 			vec4 Ta = textureLod(tex,uv+e.xz,0.);
 			vec4 Tb = textureLod(tex,uv+e.zy,0.);
 			vec3 scene_pos_a = getWorldPos(uv+e.xz,Ta.w,inverse(my_projection),my_camera);
 			vec3 scene_pos_b = getWorldPos(uv+e.zy,Tb.w,inverse(my_projection),my_camera);
 			
-			vec3 n = normalize( cross(normalize(scene_pos_a-scene_pos),normalize(scene_pos_b-scene_pos)) );
+			vec3 collision_normal = normalize( cross(normalize(scene_pos_a-scene_pos),normalize(scene_pos_b-scene_pos)) );
 			
-			TRANSFORM[3].xyz += n*dot(n,scene_pos - TRANSFORM[3].xyz);
-			VELOCITY += 1.5*n*-dot(n,VELOCITY);
+			float collision_depth = dot(collision_normal,scene_pos - TRANSFORM[3].xyz);
+			
+			TRANSFORM[3].xyz += collision_normal * collision_depth;
+			vec3 a = collision_normal * dot(collision_normal, VELOCITY);
+			VELOCITY -= a;
+			VELOCITY = mix(VELOCITY, vec3(0.0), friction*DELTA); //V - Vf dt
+			VELOCITY -= a*bounciness;
 		}
 		
 		// simulate
@@ -104,7 +115,7 @@ void vertex(){
 		// integrate gravity acceleration
 		VELOCITY += vec3(0,-2,0)*DELTA;
 		
-		COLOR.w = smoothstep(1.99,1.5,CUSTOM.w)*.5;
+		COLOR.w = smoothstep(LIFETIME,LIFETIME-.5,CUSTOM.w)*.5;
 		
 	}
 }

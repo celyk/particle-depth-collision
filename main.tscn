@@ -1,7 +1,7 @@
 [gd_scene load_steps=19 format=2]
 
 [ext_resource path="res://look_and_fly.gd" type="Script" id=1]
-[ext_resource path="res://particle.gdshader" type="Shader" id=2]
+[ext_resource path="res://particles.gdshader" type="Shader" id=2]
 [ext_resource path="res://default_env.tres" type="Environment" id=3]
 [ext_resource path="res://particle.tres" type="Material" id=4]
 [ext_resource path="res://smooth_follow.gd" type="Script" id=5]
@@ -16,7 +16,7 @@ render_priority = 2
 shader = ExtResource( 2 )
 shader_param/spray = 0.4
 shader_param/bounciness = 0.5
-shader_param/friction = 0.5
+shader_param/friction = 0.0
 shader_param/start_velocity = null
 shader_param/my_screen_pixel_size = null
 shader_param/my_camera = null
@@ -197,7 +197,7 @@ fov = 90.0
 transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0342143, -0.288255 )
 emitting = false
 amount = 65536
-lifetime = 2.0
+lifetime = 2.5
 local_coords = false
 process_material = SubResource( 19 )
 draw_pass_1 = SubResource( 24 )
