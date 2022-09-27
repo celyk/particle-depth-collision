@@ -115,6 +115,11 @@ void vertex(){
 		// integrate gravity acceleration
 		VELOCITY += vec3(0,-2,0)*DELTA;
 		
+		TRANSFORM = mat4(vec4(1,0,0,0),vec4(0,1,0,0),vec4(0,0,1,0),TRANSFORM[3]);
+		TRANSFORM[0].xyz = TRANSFORM[0].xyz + (8.)*VELOCITY*dot(TRANSFORM[0].xyz,VELOCITY);
+		TRANSFORM[1].xyz = TRANSFORM[1].xyz + (8.)*VELOCITY*dot(TRANSFORM[1].xyz,VELOCITY);
+		TRANSFORM[2].xyz = TRANSFORM[2].xyz + (8.)*VELOCITY*dot(TRANSFORM[2].xyz,VELOCITY);
+		
 		COLOR.w = smoothstep(LIFETIME,LIFETIME-.5,CUSTOM.w)*.5;
 		
 	}

@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=2]
+[gd_scene load_steps=28 format=2]
 
 [ext_resource path="res://look_and_fly.gd" type="Script" id=1]
 [ext_resource path="res://particles.gdshader" type="Shader" id=2]
@@ -14,18 +14,18 @@ viewport_path = NodePath("Viewport")
 resource_local_to_scene = true
 render_priority = 2
 shader = ExtResource( 2 )
-shader_param/spray = 0.4
+shader_param/spray = 0.5
 shader_param/bounciness = 0.5
-shader_param/friction = 0.0
+shader_param/friction = 20.0
 shader_param/start_velocity = null
 shader_param/my_screen_pixel_size = null
 shader_param/my_camera = null
 shader_param/my_scuffed_projection = null
 shader_param/tex = SubResource( 25 )
 
-[sub_resource type="CubeMesh" id=24]
+[sub_resource type="CubeMesh" id=29]
 material = ExtResource( 4 )
-size = Vector3( 0.005, 0.005, 0.005 )
+size = Vector3( 0.004, 0.004, 0.004 )
 
 [sub_resource type="GDScript" id=17]
 script/source = "extends Particles
@@ -102,6 +102,300 @@ void fragment(){
 render_priority = 1
 shader = SubResource( 8 )
 
+[sub_resource type="Shader" id=26]
+code = "shader_type particles;
+
+render_mode disable_velocity;
+
+uniform sampler2D tex;
+
+uniform vec2 my_screen_pixel_size;
+
+uniform mat4 my_camera;
+uniform mat4 my_scuffed_projection;
+
+mat2 rotate(float a) {
+    float s = sin(a), c = cos(a);
+    return mat2(vec2(c, -s), vec2(s, c));
+}
+
+float rand_from_seed(inout uint seed) {
+	int k;
+	int s = int(seed);
+	if (s == 0)
+	s = 305420679;
+	k = s / 127773;
+	s = 16807 * (s - k * 127773) - 2836 * k;
+	if (s < 0)
+		s += 2147483647;
+	seed = uint(s);
+	return float(seed % uint(65536)) / 65535.0;
+}
+
+uint hash(uint x) {
+	x = ((x >> uint(16)) ^ x) * uint(73244475);
+	x = ((x >> uint(16)) ^ x) * uint(73244475);
+	x = (x >> uint(16)) ^ x;
+	return x;
+}
+
+
+vec2 getUV(vec3 pos,mat4 viewToClip, mat4 worldToView){
+	vec4 p = viewToClip*worldToView*vec4(pos,1);
+	p.xyz /= p.w;
+	return p.xy*.5+.5;
+}
+
+vec3 getWorldPos(vec2 screen, float depth, mat4 clipToView, mat4 viewToWorld){
+	vec3 ndc = vec3(screen, depth) * 2.0 - 1.0;
+	/*vec4 view = clipToView * vec4(ndc, 1.0);
+	view.xyz /= view.w;
+	float linear_depth = -view.z;*/
+	
+	vec4 world = viewToWorld * clipToView * vec4(ndc, 1.0);
+	vec3 world_position = world.xyz / world.w;
+	
+	return world_position;
+}
+
+void vertex(){
+	// random vector
+	uint base_number = NUMBER;
+	uint alt_seed = hash(base_number + uint(1) + RANDOM_SEED);
+
+	vec3 rv = vec3(rand_from_seed(alt_seed),rand_from_seed(alt_seed),rand_from_seed(alt_seed))-.5;
+	
+	vec3 a = EMISSION_TRANSFORM[3].xyz + normalize(rv)*.1;
+	vec3 b = a;
+	
+	float r = .001;
+	
+	if(RESTART){
+		CUSTOM.w = 0.;
+		COLOR.xyz = vec3(rv+.5);
+		TRANSFORM = mat4(r);
+		TRANSFORM[2].xyz = a;
+		TRANSFORM[3].xyz = a;
+		CUSTOM.x = 1.0;
+	}
+	else{
+		if(CUSTOM.x > .5){
+			// reconstruct projection matrix
+			mat4 my_projection = my_scuffed_projection;
+			my_projection[2][3] = -1.;
+			my_projection[3][3] = 0.;
+			
+			// get screen space coordinates of particle
+			vec2 uv = getUV(TRANSFORM[3].xyz,my_projection,inverse(my_camera));
+			vec4 T = textureLod(tex,uv,0.);
+			
+			vec3 scene_pos = getWorldPos(uv,T.w,inverse(my_projection),my_camera);
+
+			float scene_t = length(scene_pos - my_camera[3].xyz);
+			float particle_t = length(TRANSFORM[3].xyz - my_camera[3].xyz);
+			
+			vec3 view = normalize(scene_pos - my_camera[3].xyz);
+			
+			float penetration_depth = scene_t - particle_t;
+			bool colliding = penetration_depth <= 0.; // && penetration_depth >= -length(VELOCITY)*.1;
+			
+			// handle collision
+			if(colliding){
+				CUSTOM.x = 0.;
+				COLOR.xyz = vec3(1,0,0);
+				
+				//b = TRANSFORM[3].xyz;
+				/*TRANSFORM[0].xyz = (b-a)/2.;
+				TRANSFORM[1].xyz = r*normalize( cross(TRANSFORM[0].xyz,vec3(0,1,0)) );
+				TRANSFORM[2].xyz = r*normalize( cross(TRANSFORM[0].xyz,TRANSFORM[1].xyz) );
+				TRANSFORM[3].xyz = (a+b)/2.;*/
+			}
+		}
+		// simulate
+		
+		CUSTOM.w += DELTA;
+		
+		// integrate gravity acceleration
+		//VELOCITY += vec3(0,-2,0)*DELTA;
+		
+		// random vector
+		base_number = NUMBER + uint(CUSTOM.w*1000.);
+		alt_seed = hash(base_number + uint(1) + RANDOM_SEED);
+
+		rv = vec3(rand_from_seed(alt_seed),rand_from_seed(alt_seed),rand_from_seed(alt_seed))-.5;
+		
+		if(CUSTOM.x>.5){
+			TRANSFORM[3].xyz += rv*.05;
+		}
+		
+		COLOR.w = smoothstep(LIFETIME,LIFETIME-.5,CUSTOM.w)*.5;
+		
+	}
+}"
+
+[sub_resource type="ShaderMaterial" id=27]
+resource_local_to_scene = true
+render_priority = 2
+shader = SubResource( 26 )
+shader_param/my_screen_pixel_size = null
+shader_param/my_camera = null
+shader_param/my_scuffed_projection = null
+shader_param/tex = SubResource( 25 )
+
+[sub_resource type="Shader" id=31]
+code = "shader_type spatial;
+
+render_mode unshaded,skip_vertex_transform,cull_disabled;
+
+vec3 xform(mat4 T,vec3 p,int w){
+	return (T*vec4(p,float(w))).xyz;
+}
+
+// calculates line billboard in view space
+mat4 getLineBillboard(vec3 a,vec3 b){
+	mat4 billboard = mat4(1);
+	billboard[1].xyz = (b-a)/2.;
+	billboard[0].xyz = normalize( cross(a,b) );
+	billboard[3].xyz = (b+a)/2.;
+	return billboard;
+}
+
+// calculates billboarding curve point basis in view space
+mat4 getCurvedBillboard(vec3 p,vec3 v){
+	mat4 M = mat4(1);
+	M[0].xyz = v;
+	M[1].xyz = normalize( cross(v,p) );
+	M[2].xyz = normalize( cross(M[0].xyz,M[1].xyz) );
+	M[3].xyz = p;
+	return M;
+}
+
+vec3 p(vec3 a,vec3 b,float t){
+	return mix(a,b,t);
+}
+
+void vertex(){
+	float t = TIME;
+	
+	//if(INSTANCE_CUSTOM.x < .5){
+		vec3 pos = WORLD_MATRIX[3].xyz;
+		
+		vec3 a = p(WORLD_MATRIX[2].xyz,pos,UV.x);
+		vec3 b = p(WORLD_MATRIX[2].xyz,pos,UV.x+.01);
+		
+		a = xform(INV_CAMERA_MATRIX,a,1);
+		b = xform(INV_CAMERA_MATRIX,b,1);
+		
+		//VERTEX.z = .5;
+		//VERTEX = mat3(MODELVIEW_MATRIX)*VERTEX;
+	    //NORMAL = normalize(mat3(MODELVIEW_MATRIX)*NORMAL);
+		
+		VERTEX = VERTEX.xzy;
+		VERTEX = xform(getLineBillboard(a,b),VERTEX,1);
+	//}
+}
+
+void fragment(){
+	ALBEDO = COLOR.xyz;
+	ALBEDO = vec3(UV,0);
+	ALPHA = COLOR.w;
+}"
+
+[sub_resource type="ShaderMaterial" id=32]
+shader = SubResource( 31 )
+
+[sub_resource type="PlaneMesh" id=30]
+material = SubResource( 32 )
+size = Vector2( 0.005, 2 )
+subdivide_width = 31
+
+[sub_resource type="GDScript" id=28]
+script/source = "extends Particles
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+func _process(dt):
+	process_material.set_shader_param(\"my_screen_pixel_size\",Vector2(1,1)/get_viewport().size)
+	
+	var camera = get_viewport().get_camera()
+	process_material.set_shader_param(\"my_camera\",camera.get_camera_transform())
+	
+	var aspect = get_viewport().size.x/get_viewport().size.y
+	process_material.set_shader_param(
+		\"my_scuffed_projection\",
+		ProjectionMatrix.createProjectionMatrix(camera.fov,aspect,camera.near,camera.far))
+"
+
+[sub_resource type="PlaneMesh" id=33]
+subdivide_width = 255
+
+[sub_resource type="Shader" id=35]
+code = "shader_type spatial;
+
+render_mode unshaded,skip_vertex_transform,cull_disabled;
+
+uniform float radius = .01;
+
+vec3 xform(mat4 T,vec3 p,int w){
+	return (T*vec4(p,float(w))).xyz;
+}
+
+// calculates billboarding curve point basis in view space
+mat4 getCurvedBillboard(vec3 p,vec3 v){
+	mat4 M;
+	M[0].xyz = normalize(v);
+	M[1].xyz = normalize( cross(p,M[0].xyz) );
+	M[2].xyz = normalize( cross(M[0].xyz,M[1].xyz) );
+	M[3].xyz = p;
+	return M;
+}
+
+vec3 P(float t){
+	t += TIME*.3;
+	return vec3(cos(t*7.),sin(t*4.),sin(t*9.))*.3 + cos(t*60.)*.04;
+}
+
+varying vec3 p;
+varying vec3 v;
+void vertex(){
+	p = P(UV.x);
+	v = (P(UV.x+.001) - p)/.001;
+	
+	p = xform(INV_CAMERA_MATRIX,p,1);
+	v = xform(INV_CAMERA_MATRIX,v,0);
+	
+	mat4 M = getCurvedBillboard(p,v);
+	
+	VERTEX = VERTEX.xzy;
+	VERTEX.x = 0.;
+	VERTEX.y *= radius;
+	//VERTEX.y *= 1.-abs(UV.x*2.-1.);
+	VERTEX = xform(M,VERTEX,1);
+}
+
+void fragment(){
+	//vec3 a = xform(INV_CAMERA_MATRIX,P(0.),1);
+	//vec3 b = xform(INV_CAMERA_MATRIX,P(1.0),1);
+	
+	vec2 uv = UV;
+	uv.y -= .5;
+	uv.x *= length(v)/radius*.5;
+	uv.x -= .5;
+	
+	float d = length(uv) - .5;
+	if(d>0.&&uv.x<0.){
+		discard;
+	}
+	
+	if(FRONT_FACING)
+		ALBEDO = vec3(1);
+	else
+		ALBEDO = vec3(0,0,1);
+}"
+
+[sub_resource type="ShaderMaterial" id=34]
+shader = SubResource( 35 )
+shader_param/radius = 0.01
+
 [sub_resource type="Shader" id=6]
 code = "shader_type canvas_item;
 
@@ -149,8 +443,8 @@ void fragment(){
 	
 	COLOR.xyz = linear_to_srgb(col.xyz); // approximately pow(T.xyz,vec3(1)/2.2)
 	
-	/* // debugging
-	if(SCREEN_UV.y<.4){
+	 // debugging
+	/*if(SCREEN_UV.y<.4){
 		COLOR.xyz = vec3(depth);
 		if(SCREEN_UV.x<.5){
 			mat4 aPROJECTION_MATRIX = mat4(1);
@@ -196,11 +490,10 @@ fov = 90.0
 [node name="Particles" type="Particles" parent="Viewport/Camera"]
 transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0342143, -0.288255 )
 emitting = false
-amount = 65536
-lifetime = 2.5
+amount = 4096
 local_coords = false
 process_material = SubResource( 19 )
-draw_pass_1 = SubResource( 24 )
+draw_pass_1 = SubResource( 29 )
 script = SubResource( 17 )
 
 [node name="OmniLight" type="OmniLight" parent="Viewport"]
@@ -278,6 +571,22 @@ material = SubResource( 16 )
 transform = Transform( 20, 0, 0, 0, 20, 0, 0, 0, 20, 0, 0, 0 )
 invert_faces = true
 material = SubResource( 1 )
+
+[node name="Particles2" type="Particles" parent="Viewport"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, -0.359229, -0.130076, -0.215481 )
+visible = false
+amount = 1
+lifetime = 2.5
+local_coords = false
+process_material = SubResource( 27 )
+draw_pass_1 = SubResource( 30 )
+script = SubResource( 28 )
+
+[node name="MeshInstance" type="MeshInstance" parent="Viewport"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.000691175 )
+mesh = SubResource( 33 )
+skeleton = NodePath("../..")
+material/0 = SubResource( 34 )
 
 [node name="fly" type="Spatial" parent="."]
 unique_name_in_owner = true
