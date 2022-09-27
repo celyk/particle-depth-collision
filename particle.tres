@@ -3,13 +3,52 @@
 [sub_resource type="Shader" id=13]
 code = "shader_type spatial;
 
-render_mode unshaded,blend_mix,depth_draw_never;//,depth_test_disable;
+render_mode unshaded,skip_vertex_transform,blend_mix,depth_draw_never;//,depth_test_disable;
+
+uniform float radius = .004;
+uniform float shutter_speed = .02;
+uniform mat4 D_inv_camera;
+
+vec3 xform(mat4 T,vec3 p,int w){
+	return (T*vec4(p,float(w))).xyz;
+}
+
+// calculates billboarding curve in view space
+mat4 getCurvedBillboard(vec3 p,vec3 v){
+	mat4 M = mat4(1);
+	M[0].xyz = normalize(v);
+	M[1].xyz = normalize( cross(p,M[0].xyz) );
+	M[2].xyz = normalize( cross(M[0].xyz,M[1].xyz) );
+	M[3].xyz = p;
+	return M;
+}
+
+void vertex(){
+	VERTEX = VERTEX.xzy;
+	VERTEX.x *= radius+length(WORLD_MATRIX[0].xyz)*shutter_speed*0.5;
+	VERTEX.y *= radius;
+	vec3 p = WORLD_MATRIX[3].xyz;
+	vec3 v = WORLD_MATRIX[0].xyz;
+	
+	//v = xform(D_inv_camera,v,1);
+	//v += xform(D_inv_camera,p,1);
+	
+	p = xform(INV_CAMERA_MATRIX,p,1);
+	//v = xform(INV_CAMERA_MATRIX,v,0);
+	VERTEX = xform(getCurvedBillboard(p,v),VERTEX,1);
+	
+	//VERTEX += xform(INV_CAMERA_MATRIX,WORLD_MATRIX[3].xyz,1);
+}
 
 void fragment(){
 	ALBEDO = vec3(COLOR.xyz);
+	//ALBEDO = vec3(UV,0);
 	ALPHA = COLOR.w;
 	EMISSION = vec3(1);
 }"
 
 [resource]
 shader = SubResource( 13 )
+shader_param/radius = 0.002
+shader_param/shutter_speed = 0.021
+shader_param/D_inv_camera = null

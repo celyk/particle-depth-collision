@@ -14,23 +14,23 @@ viewport_path = NodePath("Viewport")
 resource_local_to_scene = true
 render_priority = 2
 shader = ExtResource( 2 )
-shader_param/spray = 0.5
-shader_param/bounciness = 0.5
-shader_param/friction = 20.0
+shader_param/spray = 0.4
+shader_param/bounciness = 0.7
+shader_param/friction = 0.0
 shader_param/start_velocity = null
 shader_param/my_screen_pixel_size = null
 shader_param/my_camera = null
 shader_param/my_scuffed_projection = null
 shader_param/tex = SubResource( 25 )
 
-[sub_resource type="CubeMesh" id=29]
+[sub_resource type="PlaneMesh" id=36]
 material = ExtResource( 4 )
-size = Vector3( 0.004, 0.004, 0.004 )
 
 [sub_resource type="GDScript" id=17]
 script/source = "extends Particles
 
 onready var last_pos = global_translation
+var last_camera_transform : Transform
 
 # Called every frame. 'delta' is the elapsed time since the previous frame.
 func _process(dt):
@@ -39,7 +39,8 @@ func _process(dt):
 	process_material.set_shader_param(\"my_screen_pixel_size\",Vector2(1,1)/get_viewport().size)
 	
 	var camera = get_viewport().get_camera()
-	process_material.set_shader_param(\"my_camera\",camera.get_camera_transform())
+	var camera_transform = camera.get_camera_transform()
+	process_material.set_shader_param(\"my_camera\",camera_transform)
 	
 	var aspect = get_viewport().size.x/get_viewport().size.y
 	process_material.set_shader_param(
@@ -55,7 +56,17 @@ func _process(dt):
 		#velocity += -global_transform.basis[2]*4.0
 	process_material.set_shader_param(\"start_velocity\",velocity)
 	
+	
+	var D_inv_camera = camera_transform.inverse() #(camera_transform - last_camera_transform)/dt
+	last_camera_transform = last_camera_transform.inverse()
+	for i in range(0,4): 
+		D_inv_camera[i] = (D_inv_camera[i] - last_camera_transform[i])/dt
+	#print(dcamera)
+	
+	draw_pass_1.material.set_shader_param(\"D_inv_camera\",D_inv_camera)
+	
 	last_pos = global_translation
+	last_camera_transform = camera_transform
 "
 
 [sub_resource type="SpatialMaterial" id=23]
@@ -339,7 +350,7 @@ vec3 xform(mat4 T,vec3 p,int w){
 	return (T*vec4(p,float(w))).xyz;
 }
 
-// calculates billboarding curve point basis in view space
+// calculates billboarding curve in view space
 mat4 getCurvedBillboard(vec3 p,vec3 v){
 	mat4 M;
 	M[0].xyz = normalize(v);
@@ -350,7 +361,7 @@ mat4 getCurvedBillboard(vec3 p,vec3 v){
 }
 
 vec3 P(float t){
-	t += TIME*.3;
+	//t += TIME*.3;
 	return vec3(cos(t*7.),sin(t*4.),sin(t*9.))*.3 + cos(t*60.)*.04;
 }
 
@@ -377,6 +388,13 @@ void fragment(){
 	//vec3 b = xform(INV_CAMERA_MATRIX,P(1.0),1);
 	
 	vec2 uv = UV;
+	
+	uv = abs(uv-.5);
+	float d = max(uv.x,uv.y)-.5;
+	
+	ALPHA = clamp(-d/fwidth(d),0.,1.);
+	
+	/*vec2 uv = UV;
 	uv.y -= .5;
 	uv.x *= length(v)/radius*.5;
 	uv.x -= .5;
@@ -384,7 +402,7 @@ void fragment(){
 	float d = length(uv) - .5;
 	if(d>0.&&uv.x<0.){
 		discard;
-	}
+	}*/
 	
 	if(FRONT_FACING)
 		ALBEDO = vec3(1);
@@ -490,10 +508,11 @@ fov = 90.0
 [node name="Particles" type="Particles" parent="Viewport/Camera"]
 transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0342143, -0.288255 )
 emitting = false
-amount = 4096
+amount = 2048
+lifetime = 2.0
 local_coords = false
 process_material = SubResource( 19 )
-draw_pass_1 = SubResource( 29 )
+draw_pass_1 = SubResource( 36 )
 script = SubResource( 17 )
 
 [node name="OmniLight" type="OmniLight" parent="Viewport"]
@@ -584,6 +603,7 @@ script = SubResource( 28 )
 
 [node name="MeshInstance" type="MeshInstance" parent="Viewport"]
 transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.000691175 )
+visible = false
 mesh = SubResource( 33 )
 skeleton = NodePath("../..")
 material/0 = SubResource( 34 )
