@@ -1,6 +1,6 @@
 extends Spatial
 
-export var speed = .2
+export var speed = 1.5
 export var look_sensitivity = .5
 
 var look_enabled : bool = true
@@ -34,4 +34,4 @@ func _process(delta):
 	
 	j = j.normalized()
 	
-	translate(Vector3(j.x,0,-j.y)*speed);
+	translate(Vector3(j.x,0,-j.y)*speed*delta);

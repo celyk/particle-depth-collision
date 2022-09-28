@@ -1,0 +1,12 @@
+0b7126e0c6e86d3ec295a72f5aa6e0bd
+::res://::1664380158
+default_env.tres::Environment::-1::1664380119::0::1::::<><>::
+icon.png::CompressedTexture2D::124313860521126400::1661525354::1664380160::1::::<><>::
+look_and_fly.gd::GDScript::-1::1664380119::0::1::::<><>::
+main.tscn::PackedScene::-1::1664380119::0::1::::<><>::res://look_and_fly.gd<>res://particles.gdshader<>res://particle.tres<>res://smooth_follow.gd<>res://resize_viewport.gd
+particle.tres::ShaderMaterial::-1::1664380119::0::1::::<><>::
+particles.gdshader::Shader::-1::1664380119::0::1::::<><>::
+projection_matrix.gd::GDScript::-1::1664380119::0::1::::<>Node<>::
+README.md::TextFile::-1::1664380119::0::1::::<><>::
+resize_viewport.gd::GDScript::-1::1661525354::0::1::::<>Viewport<>::
+smooth_follow.gd::GDScript::-1::1664380119::0::1::::<><>::
