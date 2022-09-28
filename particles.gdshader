@@ -3,7 +3,7 @@ shader_type particles;
 
 uniform float spray : hint_range(0.0,5.0) = 0.4;
 uniform float bounciness : hint_range(0.0,1.0) = 0.5;
-uniform float friction : hint_range(0.0,20.0) = 0.5;
+uniform float friction : hint_range(0.0,1.0) = 0.01;
 
 
 uniform vec3 start_velocity;
@@ -61,9 +61,9 @@ void vertex(){
 		uint alt_seed = hash(base_number + uint(1) + RANDOM_SEED);
 
 		vec3 rv = vec3(rand_from_seed(alt_seed),rand_from_seed(alt_seed),rand_from_seed(alt_seed))-.5;
-	
+		
 		CUSTOM.w = 0.;
-		COLOR.xyz = vec3(rv+.5);
+		COLOR.xyz = vec3(rv+.5)*1.2;
 		TRANSFORM[3].xyz = EMISSION_TRANSFORM[3].xyz; //-rand_from_seed(alt_seed)*start_velocity*DELTA;
 		VELOCITY = start_velocity+rv*spray;
 	}
@@ -87,6 +87,7 @@ void vertex(){
 		float penetration_depth = scene_t - particle_t;
 		bool colliding = penetration_depth <= 0. && penetration_depth >= -length(VELOCITY)*.1;
 		
+		
 		// handle collision
 		if(colliding){
 			// reconstruct normal on scene
@@ -103,7 +104,7 @@ void vertex(){
 			TRANSFORM[3].xyz += collision_normal * collision_depth;
 			vec3 a = collision_normal * dot(collision_normal, VELOCITY);
 			VELOCITY -= a;
-			VELOCITY = mix(VELOCITY, vec3(0.0), friction*DELTA); //V - Vf dt
+			VELOCITY = mix(VELOCITY, vec3(0.0), friction); //V - Vf dt
 			VELOCITY -= a*bounciness;
 		}
 		

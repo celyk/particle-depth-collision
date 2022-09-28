@@ -3,7 +3,6 @@
 [sub_resource type="ProceduralSky" id=1]
 
 [resource]
-background_mode = 2
 background_sky = SubResource( 1 )
 ambient_light_sky_contribution = 0.38
 ssao_enabled = true

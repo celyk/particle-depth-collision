@@ -23,12 +23,19 @@ mat4 getCurvedBillboard(vec3 p,vec3 v){
 	return M;
 }
 
+varying vec3 v; // why WORLD_MATRIX[0].xyz doesn't work in fragment ?
 void vertex(){
 	VERTEX = VERTEX.xzy;
-	VERTEX.x *= radius+length(WORLD_MATRIX[0].xyz)*shutter_speed*0.5;
-	VERTEX.y *= radius;
+	//VERTEX.x *= radius+length(WORLD_MATRIX[0].xyz)*shutter_speed*0.5;
+	//VERTEX.y *= radius;
+	float speed = length(WORLD_MATRIX[0].xyz);
+	vec2 scale = vec2(speed*.5*shutter_speed,0) + radius;
+	VERTEX.xy *= scale;
+	UV = VERTEX.xy;
+	//UV = (UV-.5)/radius;
+	
 	vec3 p = WORLD_MATRIX[3].xyz;
-	vec3 v = WORLD_MATRIX[0].xyz;
+	v = WORLD_MATRIX[0].xyz;
 	
 	//v = xform(D_inv_camera,v,1);
 	//v += xform(D_inv_camera,p,1);
@@ -36,19 +43,40 @@ void vertex(){
 	p = xform(INV_CAMERA_MATRIX,p,1);
 	//v = xform(INV_CAMERA_MATRIX,v,0);
 	VERTEX = xform(getCurvedBillboard(p,v),VERTEX,1);
+	//VERTEX *= .1;
+	
 	
 	//VERTEX += xform(INV_CAMERA_MATRIX,WORLD_MATRIX[3].xyz,1);
 }
 
 void fragment(){
 	ALBEDO = vec3(COLOR.xyz);
+	//ALBEDO = vec3(1);
+	
 	//ALBEDO = vec3(UV,0);
 	ALPHA = COLOR.w;
+	
+	float speed = length(v);
+	
+	/*if(SCREEN_UV.x>0.5){
+		speed = WORLD_MATRIX[0].xyz;
+	}*/
+	
+	float d = length( abs(UV) - vec2(min(abs(UV.x),speed*.5*shutter_speed),0) ) - radius;
+	
+	if(d>=0.){
+		discard;
+		//ALBEDO = vec3(0,0,.2);
+	}
+	
+	ALPHA *= min(-d/fwidth(d),1.);
+	ALPHA *= ALPHA/(ALPHA+speed);
+	
 	EMISSION = vec3(1);
 }"
 
 [resource]
 shader = SubResource( 13 )
 shader_param/radius = 0.002
-shader_param/shutter_speed = 0.021
+shader_param/shutter_speed = 0.02
 shader_param/D_inv_camera = null
